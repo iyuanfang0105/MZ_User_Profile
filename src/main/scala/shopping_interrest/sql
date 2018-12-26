@@ -1,0 +1,5 @@
+-- 通知栏，曝光点击
+SELECT event_name, count(1) from uxip.dwd_app_action_detail where stat_date=20180825 and event_name in ('notifiction_receive', 'notifiction_icon_intent_click') and pkg_name = 'com.android.systemui' and country='CN' and lla='zh_CN' and is_oversea=0 group by event_name
+
+-- 点击，group by 包名
+SELECT misc_map['PackageName'], count(1) from uxip.dwd_app_action_detail where stat_date=20180825 and event_name ='notifiction_icon_intent_click' and pkg_name = 'com.android.systemui' and country='CN' and lla='zh_CN' and is_oversea=0 group by misc_map['PackageName']
