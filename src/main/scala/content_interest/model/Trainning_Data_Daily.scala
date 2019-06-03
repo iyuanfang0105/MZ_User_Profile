@@ -1,4 +1,5 @@
-package content_interrest.data_process
+package content_interest.model
+
 
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -9,64 +10,18 @@ import org.apache.log4j.{Level, Logger}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{DataFrame, SaveMode, SparkSession}
 
-object Data_process {
+object Trainning_Data_Daily {
   def main(args: Array[String]): Unit = {
     my_log("Initial spark")
     val job_time = args(0)
     // val job_time = "20181118"
     val (sparkSession, job_date) = init_job(job_time)
 
-    my_log("Getting mzreader data")
-    get_mznews_data(sparkSession, job_date)
-
-    my_log("Getting browser data and third_party data")
-    get_browser_and_third_party_news_data(sparkSession, job_date)
-
-    my_log("Getting third_party data")
-    get_third_party_news_data(sparkSession, job_date)
-
-    my_log("Getting notification data")
-    get_notice_data(sparkSession, job_date)
+    my_log("Prepare trainning data")
+    get_trainning_data_daily(sparkSession, job_date)
   }
 
-//  def get_user_reading_record(sparkSession: SparkSession, job_date: String) = {
-//    val select_sql_user_reading = "select imei, article_id from from mzreader.dwd_app_stream_detail_reader where stat_date=" + job_date + " and event_name='view_article'"
-//    print_sql(select_sql_user_reading)
-//
-//    val data_user_reading = sparkSession.sql(select_sql_user_reading).filter("imei is not null and article_id is not null").rdd.map(v => (v.get(0).toString, v.get(1).toString)).filter(v => v._1.length > 1 && v._2.length > 1)
-//    val data_refined_user_reading = data_user_reading.map(v => (v, 1)).reduceByKey(_+_).map(v => (v._1._1, v._1._2, v._2))
-//    printf("\n====>>>> raw record of user reading: %d\n", data_refined_user_reading.count())
-//
-//    val select_sql_article = "select fid, ftitle, fcontent, fcategory from mzreader.ods_t_article_c where stat_date>" + offset_date(job_date, month_offset = -1, day_offset = 0)
-//    // val select_sql_article = "select fid, ftitle, fcontent, fcategory from mzreader.ods_t_article_c"
-//    print_sql(select_sql_article)
-//
-//    val data_article = sparkSession.sql(select_sql_article).distinct().filter("fid is not null and ftitle is not null and fcontent is not null").rdd.map(v => (v.get(0).toString, (v.getString(1), v.getString(2), v.getString(3)))).filter(_._1.length > 1)
-//    printf("\n====>>>> article: %d\n", data_article.count())
-//    // printf("\n====>>>> article: %d\n", data_article.map(_._1).distinct().count())
-//
-//    val data_daily = data_refined_user_reading.map(v => (v._2, (v._1, v._3))).join(data_article).map(v => (v._2._1._1, v._1, v._2._2._1.trim, v._2._2._2.trim, v._2._2._3.trim, v._2._1._2))
-//    printf("\n====>>>> refined record of user reading: %d\n", data_daily.count())
-//
-//    val data_daily_refined = data_daily.map(v => {
-//      var uc = 0
-//      var fcat_trans = "unk"
-//      if (v._5 != null && v._5.length > 1){
-//        fcat_trans = Labels.transform(v._5)
-//        uc = 1
-//      }
-//      (v._1, v._2, v._3, v._4, v._5, fcat_trans, v._6, uc)
-//    })
-//    print_sql("uc vs non-us:")
-//    numerical_label_distribute(data_daily_refined.map(v => (v._2, v._8)))
-//
-//    import sparkSession.implicits._
-//    val save_table_name = "algo.up_yf_content_interest_user_reading_records_daily"
-//    val cols = "imei string, fid string, ftitle string, fcontent string, fcategory string, fcategory_trans string, times int, uc int"
-//    save_result_to_hive(sparkSession, data_daily_refined.toDF(), cols, save_table_name, job_date)
-//  }
-
-  def get_mznews_data(sparkSession: SparkSession, job_date: String) = {
+  def get_trainning_data_daily(sparkSession: SparkSession, job_date: String) = {
     val categorys_map: Map[String, String] = Map(
       "国内" -> "时政,国内",
       "国际" -> "时政,国际",
@@ -462,16 +417,23 @@ object Data_process {
     printf("\n====>>>> categorys map: %d\n", categorys_map.size)
     printf("\n====>>>> used categorys: %d\n", used_categorys.size)
 
-    // val select_sql = "select fid, ftitle, decode(unbase64(fcontent), 'utf-8') as fcontent, fcategory from mzreader.ods_t_article_c where stat_date>" + offset_date(job_date, month_offset = -6, day_offset = 0) + " and fresource_type==2"
     // got data from uc and baidu, only use pic and text
-    val select_sql = "select fid, ftitle, decode(unbase64(fcontent), 'utf-8') as fcontent, fcategory from mzreader.ods_t_article_c where stat_date=" + job_date + " and (fresource_type=2 or fresource_type=76) and (ftype=0 or ftype=1)"
-    // val select_sql = "select fid, ftitle, fcontent, fcategory from mzreader.ods_t_article_c where fresource_type==2"
+    val select_sql = "select fid, ftitle, decode(unbase64(fcontent), 'utf-8') as fcontent, fcategory, fresource_type from mzreader.ods_t_article_c where stat_date=" + job_date + " and (fresource_type=2 or fresource_type=76) and (ftype=0 or ftype=1)"
     print_sql(select_sql)
 
-    val data = sparkSession.sql(select_sql).filter("fid is not null and ftitle is not null and fcontent is not null").rdd.map(v => (v.get(0).toString.trim, v.getString(1).trim, v.getString(2).trim, v.getString(3))).filter(v => v._2.length > 1 && v._3.length > 1).map(v => {
+    val data = sparkSession.sql(select_sql).filter("fid is not null and ftitle is not null and fcontent is not null and fcategory is not null").rdd.map(v => (v(0).toString.trim, v.getString(1).trim, v.getString(2).trim, v.getString(3).trim, v(4).toString)).filter(v => v._1.length > 1 && v._2.length > 1 && v._3.length > 1 && v._4.length > 1).map(v => {
       var category = "unk"
       var cate_id = -1
       var level = -1
+      var fsource = "unk"
+
+      if(v._5.toInt == 2){
+        fsource = "UC"
+      }
+
+      if(v._5.toInt == 76){
+        fsource = "Baidu"
+      }
 
       if(v._4 != null && v._4.length>1){
         val (cat, used) = transform(v._4, categorys_map, used_categorys)
@@ -486,7 +448,7 @@ object Data_process {
         }
       }
 
-      (v._1, segment(refine_str(v._2)), segment(refine_str(stripHtml(v._3))), category, cate_id, level)
+      (v._1, fsource, segment(refine_str(v._2)), segment(refine_str(stripHtml(v._3))), category.replace(",", "-"), cate_id, level)
     })
     //    print_sql("label vs un-label:")
     //    numerical_label_distribute(data.map(v => (v._1, if(v._5 == -1) 0 else 1)))
@@ -497,114 +459,23 @@ object Data_process {
     //    numerical_label_distribute(data_first_level)
     //    numerical_label_distribute(data_second_level)
     //    // printf("\n====>>>> classes num: %d\n", data.map(_._4).distinct().count())
-    printf("\n====>>>> data: %d\n", data.count())
+    val data_count = data.count()
+    printf("\n====>>>> data: %d\n", data_count)
+
+    data.map(v => (v._2, 1)).reduceByKey(_+_).collect().sortBy(_._2).foreach(v => {
+      printf("\n====>>>> fsource %s: %d, all: %d, ratio: %.4f\n", v._1, v._2, data_count, v._2 * 1.0 / data_count)
+    })
 
     import sparkSession.implicits._
-    val save_table_name = "algo.up_yf_content_interest_mznews_data"
-    val cols = "fid string, ftitle string, fcontent string, fcategory string, fcategory_id int, level int"
+    val save_table_name = "algo.up_yf_content_interest_trainning_data"
+    val cols = "fid string, fsource string, ftitle string, fcontent string, fcategory string, fcategory_id int, level int"
     save_result_to_hive(sparkSession, data.toDF(), cols, save_table_name, job_date)
 
-    val unlabelled_data = data.filter(_._5 == -1).map(v => (v._1, v._2, v._3))
-    printf("\n====>>>> unlabled data: %d\n", unlabelled_data.count())
-    unlabelled_data.map(v => v._1 + "##yf##" + v._2).toDF().repartition(10).write.mode(SaveMode.Overwrite).text("/apps/recommend/models/wind/content_interrest/unlabeled_data/mzreader_title/" + job_date)
-    unlabelled_data.map(v => v._1 + "##yf##" + v._3).toDF().repartition(10).write.mode(SaveMode.Overwrite).text("/apps/recommend/models/wind/content_interrest/unlabeled_data/mzreader_content/" + job_date)
-  }
 
-  def get_browser_and_third_party_news_data(sparkSession: SparkSession, job_date: String) = {
-    val select_sql = "select fmd5, furl, ftitle, fcontent from uxip.dwd_browser_url_creeper where stat_date=" + job_date + " and src_type in ('com.ss.android.article.news', 'com.android.browser', 'com.ifeng.news2', 'com.netease.newsreader.activity', 'com.tencent.news')"
-    print_sql(select_sql)
-
-    val commerce_domains = Array("item.taobao.com", "s.click.taobao.com", "ai.m.taobao.com", "union.click.jd.com", "h5.m.taobao.com", "item.m.jd.com", "m.1688.com", "so.m.jd.com", "detail.m.tmall.com", "union-click.jd.com", "login.m.taobao.com", "m.taobao.com", "list.tmall.com", "m.vip.com", "s.m.taobao.com")
-    val useless_domains = Array("a.app.qq.com", "mp.weixin.qq.com", "wappass.baidu.com", "mobile.baidu.com", "map.baidu.com", "y.10086.cn", "accounts.google.com", "dx.10086.cn", "m.cr173.com", "m.yiwan.com", "hanyu.baidu.com")
-    val label_known_domains = Map("bbs.flyme.cn" -> "科技", "www.zybang.com" -> "教育", "detail.mall.meizu.com" -> "科技", "m.meizu.com" -> "科技", "m.120ask.com" -> "健康", "muzhi.baidu.com" -> "健康", "show.v.meizu.com" -> "科技", "baobao.baidu.com" -> "育儿", "m.ctrip.com" -> "旅游", "3g.club.xywy.com" -> "健康", "bbs.meizu.cn" -> "科技", "m.haodf.com" -> "健康", "www.flyme.cn" -> "科技", "h5.qichedaquan.com" -> "汽车", "m.babytree.com" -> "育儿", "i.flyme.cn" -> "科技", "m.flyme.cn" -> "科技", "mall.meizu.com" -> "科技", "a.9game.cn" -> "游戏", "car.h5.yiche.com" -> "汽车", "m.anjuke.com" -> "房产", "login.flyme.cn" -> "科技", "club.m.autohome.com.cn" -> "汽车")
-    val useless_str = Array("百度一下", "下载百度网盘", "赞评论")
-
-    val data = sparkSession.sql(select_sql).filter("fmd5 is not null and furl is not null and ftitle is not null and fcontent is not null").rdd.map(v => (v.getString(0), v.getString(1), refine_str(v.getString(2)), refine_str(v.getString(3)))).filter(v => v._3.length > 1 && v._4.length > 1).distinct()
-
-    val data_refined = data.filter(v => !useless_str.contains(v._3)).map(v => {
-      val tmp = v._2.split("""\/""")
-      var domain = ""
-      var label = "unk"
-      if (tmp.length > 3) {
-        domain = tmp(2)
-        if (label_known_domains.contains(domain)){
-          label = label_known_domains(domain)
-        }
-      }
-      (v._1, domain, segment(v._3), segment(v._4), label)
-    }).filter(v => !commerce_domains.contains(v._2) && !useless_domains.contains(v._2))
-    printf("\n====>>>> data: %d\n", data_refined.count())
-
-    import sparkSession.implicits._
-    val save_table_name = "algo.up_yf_content_interest_browser_and_third_party_news_data"
-    val cols = "fmd5 string, domain string, ftitle string, fcontent string, label string"
-    save_result_to_hive(sparkSession, data_refined.toDF(), cols, save_table_name, job_date)
-
-    val unlabelled_data = data_refined.filter(_._5 == "unk").map(v => (v._1, v._3, v._4))
-    printf("\n====>>>> unlabled data: %d\n", unlabelled_data.count())
-    unlabelled_data.map(v => v._1 + "##yf##" + v._2).toDF().repartition(10).write.mode(SaveMode.Overwrite).text("/apps/recommend/models/wind/content_interrest/unlabeled_data/browser_3p_title/" + job_date)
-    unlabelled_data.map(v => v._1 + "##yf##" + v._3).toDF().repartition(10).write.mode(SaveMode.Overwrite).text("/apps/recommend/models/wind/content_interrest/unlabeled_data/browser_3p_content/" + job_date)
-  }
-
-  def get_third_party_news_data(sparkSession: SparkSession, job_date: String) = {
-    val select_sql = "select fmd5, furl, ftitle, fcontent from uxip.dwd_browser_url_creeper where stat_date=" + job_date + " and src_type in ('com.ss.android.article.news', 'com.ifeng.news2', 'com.netease.newsreader.activity', 'com.tencent.news')"
-    print_sql(select_sql)
-
-    val commerce_domains = Array("item.taobao.com", "s.click.taobao.com", "ai.m.taobao.com", "union.click.jd.com", "h5.m.taobao.com", "item.m.jd.com", "m.1688.com", "so.m.jd.com", "detail.m.tmall.com", "union-click.jd.com", "login.m.taobao.com", "m.taobao.com", "list.tmall.com", "m.vip.com", "s.m.taobao.com")
-    val useless_domains = Array("a.app.qq.com", "mp.weixin.qq.com", "wappass.baidu.com", "mobile.baidu.com", "map.baidu.com", "y.10086.cn", "accounts.google.com", "dx.10086.cn", "m.cr173.com", "m.yiwan.com", "hanyu.baidu.com")
-    val label_known_domains = Map("bbs.flyme.cn" -> "科技", "www.zybang.com" -> "教育", "detail.mall.meizu.com" -> "科技", "m.meizu.com" -> "科技", "m.120ask.com" -> "健康", "muzhi.baidu.com" -> "健康", "show.v.meizu.com" -> "科技", "baobao.baidu.com" -> "育儿", "m.ctrip.com" -> "旅游", "3g.club.xywy.com" -> "健康", "bbs.meizu.cn" -> "科技", "m.haodf.com" -> "健康", "www.flyme.cn" -> "科技", "h5.qichedaquan.com" -> "汽车", "m.babytree.com" -> "育儿", "i.flyme.cn" -> "科技", "m.flyme.cn" -> "科技", "mall.meizu.com" -> "科技", "a.9game.cn" -> "游戏", "car.h5.yiche.com" -> "汽车", "m.anjuke.com" -> "房产", "login.flyme.cn" -> "科技", "club.m.autohome.com.cn" -> "汽车")
-    val useless_str = Array("百度一下", "下载百度网盘", "赞评论")
-
-    val data = sparkSession.sql(select_sql).filter("fmd5 is not null and furl is not null and ftitle is not null and fcontent is not null").rdd.map(v => (v.getString(0), v.getString(1), refine_str(v.getString(2)), refine_str(v.getString(3)))).filter(v => v._3.length > 1 && v._4.length > 1).distinct()
-
-    val data_refined = data.filter(v => !useless_str.contains(v._3)).map(v => {
-      val tmp = v._2.split("""\/""")
-      var domain = ""
-      var label = "unk"
-      if (tmp.length > 3) {
-        domain = tmp(2)
-        if (label_known_domains.contains(domain)){
-          label = label_known_domains(domain)
-        }
-      }
-      (v._1, domain, segment(v._3), segment(v._4), label)
-    }).filter(v => !commerce_domains.contains(v._2) && !useless_domains.contains(v._2))
-    printf("\n====>>>> data: %d\n", data_refined.count())
-
-    import sparkSession.implicits._
-    val save_table_name = "algo.up_yf_content_interest_third_party_news_data"
-    val cols = "fmd5 string, domain string, ftitle string, fcontent string, label string"
-    save_result_to_hive(sparkSession, data_refined.toDF(), cols, save_table_name, job_date)
-
-    val unlabelled_data = data_refined.filter(_._5 == "unk").map(v => (v._1, v._3, v._4))
-    printf("\n====>>>> unlabled data: %d\n", unlabelled_data.count())
-    unlabelled_data.map(v => v._1 + "##yf##" + v._2).toDF().repartition(10).write.mode(SaveMode.Overwrite).text("/apps/recommend/models/wind/content_interrest/unlabeled_data/3p_title/" + job_date)
-    unlabelled_data.map(v => v._1 + "##yf##" + v._3).toDF().repartition(10).write.mode(SaveMode.Overwrite).text("/apps/recommend/models/wind/content_interrest/unlabeled_data/3p_content/" + job_date)
-  }
-
-  def get_notice_data(sparkSession: SparkSession, job_date: String) = {
-    val select_sql = "select imei, misc_map ['title'] title, misc_map ['content'] content from uxip.dwd_app_action_detail where stat_date = " + job_date + " and pkg_name='com.android.systemui' and event_name in ('notifiction_receive', 'notifiction_icon_intent_click') and misc_map ['category'] in ('news','recommend','subscribe') and misc_map['PackageName'] not in ('com.taobao.taobao', 'com.xunmeng.pinduoduo', 'com.jingdong.app.mall', 'com.achievo.vipshop', 'com.xingin.xhs', 'com.tmall.wireless')"
-    print_sql(select_sql)
-
-    val data = sparkSession.sql(select_sql).filter("imei is not null and title is not null and content is not null").rdd.map(v => (v.getString(0), v.getString(1), v.getString(2))).filter(v => v._2.length > 1 && v._3.length > 1).map(v => ((v._2, v._3), Array(v._1)))
-    val data_refined = data.reduceByKey(_++_).map(v => (segment(refine_str(v._1._1)), segment(refine_str(v._1._2)), v._2.mkString(" ").trim))
-
-    printf("\n====>>>> notice data: %d\n", data_refined.count())
-
-//    val notice_ods = data.map(v => (v._2.hashCode, v._2, v._3)).distinct().zipWithIndex()
-//    printf("\n====>>>> notice ods title: %d\n", notice_ods.count())
-//
-//    val notice_records = data.map(v => ((v._1, notice_ods.lookup((v._2, v._3)).head), 1)).reduceByKey(_+_).map(v => (v._1, v._1._2.toString, v._2))
-//    printf("\n====>>>> notice user: %d\n", notice_records.map(_._1).distinct().count())
-//    printf("\n====>>>> notice user actions: %d\n", notice_records.count())
-
-    import sparkSession.implicits._
-    val save_table_name = "algo.up_yf_content_interest_notice_records"
-    val cols = "ftitle string, fcontent string, imeis string"
-    save_result_to_hive(sparkSession, data_refined.toDF(), cols, save_table_name, job_date)
-
-    data_refined.map(v => v._3 + "##yf##" + v._1).toDF().repartition(10).write.mode(SaveMode.Overwrite).text("/apps/recommend/models/wind/content_interrest/unlabeled_data/notice_title/" + job_date)
-    data_refined.map(v => v._3 + "##yf##" + v._2).toDF().repartition(10).write.mode(SaveMode.Overwrite).text("/apps/recommend/models/wind/content_interrest/unlabeled_data/notice_content/" + job_date)
+//    data.filter(_._6 == 1).map(v => "__label__" + v._3 + "_" + v._4.toString + ", " + v._1).toDF().repartition(10).write.mode(SaveMode.Overwrite).text("/apps/recommend/models/wind/content_interrest/labelled_data/title_first_level")
+//    data.filter(_._6 == 2).map(v => "__label__" + v._3 + "_" + v._4.toString + ", " + v._1).toDF().repartition(10).write.mode(SaveMode.Overwrite).text("/apps/recommend/models/wind/content_interrest/labelled_data/title_second_level")
+//    data.filter(_._6 == 1).map(v => "__label__" + v._3 + "_" + v._4.toString + ", " + v._2).toDF().repartition(10).write.mode(SaveMode.Overwrite).text("/apps/recommend/models/wind/content_interrest/labelled_data/content_first_level")
+//    data.filter(_._6 == 2).map(v => "__label__" + v._3 + "_" + v._4.toString + ", " + v._2).toDF().repartition(10).write.mode(SaveMode.Overwrite).text("/apps/recommend/models/wind/content_interrest/labelled_data/content_second_level")
   }
 
   def init_job(job_time: String): (SparkSession, String) = {
@@ -711,4 +582,3 @@ object Data_process {
     else s.replaceAll("[^\u4e00-\u9FCB]+", " ").replace("\n", " ")
   }
 }
-

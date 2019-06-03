@@ -1,19 +1,39 @@
-package content_interrest.model
+package content_interest.model
 
 import java.text.SimpleDateFormat
 import java.util.Calendar
 
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.{DataFrame, SparkSession}
+import org.apache.spark.sql.{DataFrame, SaveMode, SparkSession}
 
-object User_Labels {
+object test {
   def main(args: Array[String]): Unit = {
+    my_log("Initial spark")
+    val job_time = args(0)
+    // val job_time = "20181118"
+    val (sparkSession, job_date) = init_job(job_time)
 
+    my_log("Prepare trainning data")
+    get_trainning_data(sparkSession, month_offset = -18, job_date)
   }
 
-  def mzreader_user_labels(sparkSession: SparkSession, job_date: String) = {
-    val select_user_actions = "select "
+  def get_trainning_data(sparkSession: SparkSession, month_offset: Int, job_date: String): Unit = {
+    // got data in a duration
+    val select_sql = "select ftitle, fcontent, fcategory, fcategory_id, level from algo.up_yf_content_interest_trainning_data where stat_date>=" + offset_date(job_date, month_offset = month_offset, day_offset = 0) + " and fsource='UC'"
+    print_sql(select_sql)
+
+    val data = sparkSession.sql(select_sql).filter("fid is not null and ftitle is not null and fcontent is not null and fcategory is not null").rdd.map(v => (v(0).toString, v(1).toString, v(2).toString, v(3).toString, v(4).toString.toInt))
+//    data.take(10).foreach(println)
+
+    printf("\n====>>>>train data of %d months: %d\n", month_offset, data.count())
+
+    import sparkSession.implicits._
+
+    data.filter(_._5 == 1).map(v => "__label__" + v._3 + "_" + v._4.toString + ", " + v._1).toDF().repartition(10).write.mode(SaveMode.Overwrite).text("/apps/recommend/models/wind/content_interrest/labelled_data/title_first_level")
+    data.filter(_._5 == 2).map(v => "__label__" + v._3 + "_" + v._4.toString + ", " + v._1).toDF().repartition(10).write.mode(SaveMode.Overwrite).text("/apps/recommend/models/wind/content_interrest/labelled_data/title_second_level")
+    data.filter(_._5 == 1).map(v => "__label__" + v._3 + "_" + v._4.toString + ", " + v._2).toDF().repartition(10).write.mode(SaveMode.Overwrite).text("/apps/recommend/models/wind/content_interrest/labelled_data/content_first_level")
+    data.filter(_._5 == 2).map(v => "__label__" + v._3 + "_" + v._4.toString + ", " + v._2).toDF().repartition(10).write.mode(SaveMode.Overwrite).text("/apps/recommend/models/wind/content_interrest/labelled_data/content_second_level")
   }
 
   def init_job(job_time: String): (SparkSession, String) = {

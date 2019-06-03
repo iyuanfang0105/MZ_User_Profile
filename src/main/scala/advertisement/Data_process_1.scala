@@ -76,7 +76,6 @@ object Data_process_1 {
 
     printf("\n====>>>> actions of yesterday %s: %d\n", yesterday, data.count())
     numerical_label_distribute(data.map(v => (v._1, v._7)))
-
     printf("\n====>>>> contained imeis: %d", data.map(_._1).distinct().count())
 
     import sparkSession.implicits._
